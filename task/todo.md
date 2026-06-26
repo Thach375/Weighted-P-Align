@@ -72,80 +72,80 @@ Status: draft checklist. Do not begin product-code implementation until the spec
 
 ## Phase 4: Artifact Export
 
-- [ ] Implement weighted SFT export.
+- [x] Implement weighted SFT export.
   - Acceptance: eligible examples are written with prompt, prefix, continuation, text, reward, advantage, normalized weight, and metadata.
   - Verify: export schema and per-group weight-sum tests pass.
   - Files likely touched: `src/build_weighted_sft.py`, `src/rw_palign/weighting.py`, `src/rw_palign/io.py`, tests.
 
-- [ ] Implement DPO pair selection.
+- [x] Implement DPO pair selection.
   - Acceptance: one best-vs-worst pair is selected from each valid mixed group by default.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: `src/rw_palign/dpo.py`, `tests/test_dpo.py`.
 
-- [ ] Implement DPO pair export CLI.
+- [x] Implement DPO pair export CLI.
   - Acceptance: pair JSONL follows the DPOPair contract and skips invalid groups with metrics.
   - Verify: fixture export test passes.
   - Files likely touched: `src/build_dpo_pairs.py`, `src/rw_palign/dpo.py`, tests.
 
 ## Phase 5: Prefix Feedback and Reporting
 
-- [ ] Implement prefix-feedback decision logic.
+- [x] Implement prefix-feedback decision logic.
   - Acceptance: pass-rate thresholds map to keep, extend, or shorten-review actions with retry caps.
   - Verify: unit tests for threshold and cap cases.
   - Files likely touched: `src/rw_palign/prefix_feedback.py`, tests.
 
-- [ ] Implement metrics aggregation.
+- [x] Implement metrics aggregation.
   - Acceptance: metrics count records, samples, verified outputs, group statuses, skipped groups, average pass rate, and DPO pairs.
   - Verify: metrics match fixture artifact line counts.
   - Files likely touched: `src/report_run.py`, `src/rw_palign/io.py`, tests.
 
-- [ ] Implement human-readable run report.
+- [x] Implement human-readable run report.
   - Acceptance: `report.md` summarizes run config and key metrics.
   - Verify: report fixture contains required metric names.
   - Files likely touched: `src/report_run.py`, tests.
 
 ## Phase 6: K-Continuation Generation
 
-- [ ] Implement prompt builder.
+- [x] Implement prompt builder.
   - Acceptance: prompt includes question, prefix, step-by-step continuation instruction, and boxed-answer instruction.
   - Verify: prompt unit test matches expected fixture text.
   - Files likely touched: `src/rw_palign/prompts.py`, tests.
 
-- [ ] Implement mockable generation interface.
+- [x] Implement mockable generation interface.
   - Acceptance: generation core can be tested with a fake model client.
   - Verify: mock generation test produces `N * K` samples.
   - Files likely touched: `src/generate_continuations.py`, `src/rw_palign/prompts.py`, tests.
 
-- [ ] Implement vLLM-backed continuation CLI.
+- [x] Implement vLLM-backed continuation CLI.
   - Acceptance: CLI writes ContinuationSample JSONL and supports resume.
   - Verify: `python src/generate_continuations.py --help`; manual GPU smoke when model path is available.
   - Files likely touched: `src/generate_continuations.py`.
 
 ## Phase 7: End-to-End Fixture Pipeline
 
-- [ ] Wire fixture scoring to weighted SFT export.
+- [x] Wire fixture scoring to weighted SFT export.
   - Acceptance: fixture mixed group creates weighted SFT examples; all-wrong group is skipped.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: tests and CLI glue only.
 
-- [ ] Wire fixture DPO export.
+- [x] Wire fixture DPO export.
   - Acceptance: fixture mixed group creates one DPO pair when enabled.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: tests and CLI glue only.
 
-- [ ] Run complete local verification.
+- [x] Run complete local verification.
   - Acceptance: all unit tests pass and CLI help commands succeed.
   - Verify: `python -m unittest discover tests` plus CLI `--help` checks.
   - Files likely touched: none unless failures require fixes.
 
 ## Phase 8: Documentation Update
 
-- [ ] Update README or add a short usage doc for the MVP pipeline.
+- [x] Update README or add a short usage doc for the MVP pipeline.
   - Acceptance: commands describe input, output, and expected artifacts.
   - Verify: commands match implemented CLI names and flags.
   - Files likely touched: `README.md` or `docs/USAGE.md`.
 
-- [ ] Document unresolved training integration details.
+- [x] Document unresolved training integration details.
   - Acceptance: downstream weighted-SFT consumption path is explicit, or a fallback export is documented.
   - Verify: no ambiguity remains for the next implementation phase.
   - Files likely touched: `docs/SPEC.md`, `docs/ARCHITECTURE.md`, or `docs/USAGE.md`.

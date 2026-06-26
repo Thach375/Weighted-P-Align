@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from typing import Iterable
+
+from .schemas import GroupStats, RewardedSample, WeightedSFTExample
 
 
 DEFAULT_EPSILON = 1e-6
@@ -69,6 +72,87 @@ def compute_sft_weights(
     return _normalize_weights(raw_weights)
 
 
+def build_weighted_sft_examples(
+    samples: Iterable[RewardedSample],
+    groups: Iterable[GroupStats] | None = None,
+    mode: str = "L2",
+    clip: float = DEFAULT_CLIP,
+    epsilon: float = DEFAULT_EPSILON,
+) -> tuple[list[WeightedSFTExample], dict[str, object]]:
+    """Build eligible weighted SFT examples and export metrics."""
+    group_lookup = {group.group_id: group for group in groups or []}
+    samples_by_group: dict[str, list[RewardedSample]] = defaultdict(list)
+    for sample in samples:
+        samples_by_group[sample.group_id].append(sample)
+
+    examples: list[WeightedSFTExample] = []
+    group_metrics: dict[str, int] = {
+        "total_groups": 0,
+        "selected_groups": 0,
+        "skipped_groups": 0,
+        "all_wrong_groups": 0,
+        "singleton_groups": 0,
+    }
+
+    for group_id in sorted(samples_by_group):
+        group_samples = sorted(samples_by_group[group_id], key=lambda item: item.sample_index)
+        rewards = [sample.reward for sample in group_samples]
+        stats = compute_group_stats(rewards, epsilon=epsilon)
+        weights = compute_sft_weights(rewards, stats["advantages"], mode=mode, clip=clip)
+        status = group_lookup.get(group_id).status if group_id in group_lookup else str(stats["status"])
+        selected_before = len(examples)
+
+        group_metrics["total_groups"] += 1
+        if status == "all_wrong":
+            group_metrics["all_wrong_groups"] += 1
+        if status == "singleton":
+            group_metrics["singleton_groups"] += 1
+
+        for sample, weight, advantage in zip(group_samples, weights, stats["advantages"]):
+            if weight <= 0.0:
+                continue
+            examples.append(
+                WeightedSFTExample(
+                    id=f"{sample.record_id}/{sample.sample_index}",
+                    prompt=_required_extra(sample, "prompt"),
+                    question=_required_extra(sample, "question"),
+                    prefix=_required_extra(sample, "prefix"),
+                    continuation=_required_extra(sample, "continuation"),
+                    text=_join_supervision_text(
+                        _required_extra(sample, "prefix"),
+                        _required_extra(sample, "continuation"),
+                    ),
+                    weight=weight,
+                    normalized_weight=weight,
+                    reward=sample.reward,
+                    advantage=float(advantage),
+                    metadata={
+                        "group_id": sample.group_id,
+                        "record_id": sample.record_id,
+                        "sample_index": sample.sample_index,
+                        "weighting_mode": mode.upper(),
+                        "group_status": status,
+                        "reward_mean": stats["reward_mean"],
+                        "reward_std": stats["reward_std"],
+                        "parsed_answer": sample.parsed_answer,
+                    },
+                )
+            )
+
+        if len(examples) > selected_before:
+            group_metrics["selected_groups"] += 1
+        else:
+            group_metrics["skipped_groups"] += 1
+
+    metrics: dict[str, object] = {
+        "input_samples": sum(len(group_samples) for group_samples in samples_by_group.values()),
+        "output_examples": len(examples),
+        "weighting_mode": mode.upper(),
+        **group_metrics,
+    }
+    return examples, metrics
+
+
 def _compute_advantages(
     rewards: list[float],
     reward_mean: float,
@@ -102,3 +186,20 @@ def _normalize_rewards(values: Iterable[float]) -> list[float]:
     if any(not math.isfinite(value) for value in normalized):
         raise ValueError("values must be finite")
     return normalized
+
+
+def _required_extra(sample: RewardedSample, field_name: str) -> str:
+    value = sample.extra.get(field_name)
+    if value is None or value == "":
+        raise ValueError(
+            f"rewarded sample {sample.record_id}/{sample.sample_index} is missing {field_name}"
+        )
+    return str(value)
+
+
+def _join_supervision_text(prefix: str, continuation: str) -> str:
+    if not prefix:
+        return continuation
+    if not continuation:
+        return prefix
+    return f"{prefix.rstrip()}\n{continuation.lstrip()}"

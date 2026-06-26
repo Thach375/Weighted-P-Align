@@ -45,6 +45,11 @@ def verify_answer(
         return False, parsed_answer, str(exc)
 
 
+def local_verify_answer(prediction: str, golden: str) -> bool:
+    """Verify simple exact or numeric-equivalent answers without external deps."""
+    return _local_verify(prediction, golden)
+
+
 def calculate_length_penalty(
     continuation: str,
     penalty_per_token: float = 0.0,

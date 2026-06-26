@@ -6,7 +6,15 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from .schemas import ContinuationSample, PrefixRecord, SchemaValidationError
+from .schemas import (
+    ContinuationSample,
+    DPOPair,
+    GroupStats,
+    PrefixRecord,
+    RewardedSample,
+    SchemaValidationError,
+    WeightedSFTExample,
+)
 
 
 T = TypeVar("T")
@@ -56,6 +64,21 @@ def write_jsonl(path: str | Path, rows: Iterable[Any]) -> None:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def write_json(path: str | Path, data: dict[str, Any]) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def ensure_output_path_available(path: str | Path, overwrite: bool = False) -> None:
+    output_path = Path(path)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"{output_path} already exists; pass --overwrite to replace it")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def load_prefix_records(path: str | Path, strict: bool = False) -> JsonlLoadResult:
     return _load_records(
         path=Path(path),
@@ -69,6 +92,42 @@ def load_continuation_samples(path: str | Path, strict: bool = False) -> JsonlLo
     return _load_records(
         path=Path(path),
         factory=ContinuationSample.from_dict,
+        strict=strict,
+        missing_id_factory=None,
+    )
+
+
+def load_rewarded_samples(path: str | Path, strict: bool = False) -> JsonlLoadResult:
+    return _load_records(
+        path=Path(path),
+        factory=RewardedSample.from_dict,
+        strict=strict,
+        missing_id_factory=None,
+    )
+
+
+def load_group_stats(path: str | Path, strict: bool = False) -> JsonlLoadResult:
+    return _load_records(
+        path=Path(path),
+        factory=GroupStats.from_dict,
+        strict=strict,
+        missing_id_factory=None,
+    )
+
+
+def load_weighted_sft_examples(path: str | Path, strict: bool = False) -> JsonlLoadResult:
+    return _load_records(
+        path=Path(path),
+        factory=WeightedSFTExample.from_dict,
+        strict=strict,
+        missing_id_factory=None,
+    )
+
+
+def load_dpo_pairs(path: str | Path, strict: bool = False) -> JsonlLoadResult:
+    return _load_records(
+        path=Path(path),
+        factory=DPOPair.from_dict,
         strict=strict,
         missing_id_factory=None,
     )
