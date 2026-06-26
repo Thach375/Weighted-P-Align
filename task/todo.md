@@ -38,17 +38,17 @@ Status: draft checklist. Do not begin product-code implementation until the spec
 
 ## Phase 2: Verifier and Reward Core
 
-- [ ] Implement final-answer extraction.
+- [x] Implement final-answer extraction.
   - Acceptance: final boxed answers, unboxed fallbacks, and multiple-box cases are handled as specified.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: `src/rw_palign/verifier.py`, `tests/test_verifier.py`.
 
-- [ ] Implement answer verification wrapper.
+- [x] Implement answer verification wrapper.
   - Acceptance: verifier returns correctness, parsed answer, and per-sample error without crashing the run.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: `src/rw_palign/verifier.py`, `tests/test_verifier.py`.
 
-- [ ] Implement optional length penalty calculation.
+- [x] Implement optional length penalty calculation.
   - Acceptance: reward equals binary correctness minus configured penalty, with penalty disabled by default.
   - Verify: unit tests for zero and nonzero penalty.
   - Files likely touched: `src/rw_palign/verifier.py`, `tests/test_verifier.py`.
