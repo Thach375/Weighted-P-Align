@@ -1,31 +1,25 @@
 #!/bin/bash
-# 用法：bash run_batch_infer.sh
+set -euo pipefail
 
-MODEL_PATH="your model path"
- 
-INPUT_FILES=(
-    "input test data path1"
-    "input test data path2"
-)
+: "${MODEL_PATH:?Set MODEL_PATH to the model path}"
+: "${INPUT_FILES:?Set INPUT_FILES to space-separated input JSONL paths}"
+: "${OUTPUT_FILES:?Set OUTPUT_FILES to space-separated output JSONL paths}"
 
-OUTPUT_FILES=(
-    "result path1"
-    "result path2"
-)
+read -r -a INPUT_FILE_ARRAY <<< "$INPUT_FILES"
+read -r -a OUTPUT_FILE_ARRAY <<< "$OUTPUT_FILES"
 
-# echo ">>> Starting batch inference..."
-
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-6}"
+mkdir -p output/log
 
 nohup python src/test.py \
     --model "$MODEL_PATH" \
-    --input_files "${INPUT_FILES[@]}" \
-    --output_files "${OUTPUT_FILES[@]}" \
-    --batch_size 1000 \
-    --n 3 \
-    --temperature 0.6 \
-    --top_p 0.9 \
-    --max_tokens 4096 \
+    --input_files "${INPUT_FILE_ARRAY[@]}" \
+    --output_files "${OUTPUT_FILE_ARRAY[@]}" \
+    --batch_size "${BATCH_SIZE:-1000}" \
+    --n "${N_SAMPLES:-3}" \
+    --temperature "${TEMPERATURE:-0.6}" \
+    --top_p "${TOP_P:-0.9}" \
+    --max_tokens "${MAX_TOKENS:-4096}" \
     > output/log/result.log 2>&1 &
 
-echo "✅ All jobs finished."
+echo "Inference job started."

@@ -1,80 +1,66 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import argparse
 import json
+import os
 import time
+
 from tqdm import tqdm
-import torch
 
 
-# =====================
-# Model Initialization
-# =====================
-model_name = "Path to your model"
+def load_model(model_name):
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as exc:
+        raise RuntimeError("Missing truncation dependency. Install requirements.txt first.") from exc
 
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype="auto",
-    device_map="auto"
-)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype="auto",
+        device_map="auto",
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    return model, tokenizer
 
 
-# =====================
-# Chat Function
-# =====================
-def chat(prompt, model):
-    messages = [
-        {"role": "user", "content": prompt}
-    ]
+def chat(prompt, model, tokenizer):
+    messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=True,
-        enable_thinking=False
+        enable_thinking=False,
     )
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
     generated_ids = model.generate(
         **model_inputs,
-        max_new_tokens=256
+        max_new_tokens=256,
     )
 
     generated_ids = [
-        output_ids[len(input_ids):]
+        output_ids[len(input_ids) :]
         for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
 
-    response = tokenizer.batch_decode(
-        generated_ids, skip_special_tokens=True
-    )[0]
-    return response
+    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
 
-# =====================
-# Sentence Splitter
-# =====================
 def split_sentences(text):
     """
     Simple sentence-level splitter.
-    You can replace this with a more robust one if needed.
     """
     sentences = text.split(". ")
     return [
-        s.strip() + "." if not s.endswith(".") else s.strip()
-        for s in sentences if s.strip()
+        sentence.strip() + "." if not sentence.endswith(".") else sentence.strip()
+        for sentence in sentences
+        if sentence.strip()
     ]
 
 
-# =====================
-# Sufficiency Check
-# =====================
-def reasoning_sufficiency_check(question, reasoning_part):
+def reasoning_sufficiency_check(question, reasoning_part, model, tokenizer):
     """
     Check whether the partial reasoning is sufficient.
-    Returns:
-        response_content (str)
-        is_sufficient (bool)
     """
-
     prompt = f"""
 You are a reasoning evaluator.
 
@@ -92,38 +78,31 @@ Question:
 Partial reasoning:
 {reasoning_part}
 """
-
     try:
-        response = chat(prompt, model)
-        is_sufficient = (
-            "[ENOUGH]" in response or response.strip() == "ENOUGH"
-        )
+        response = chat(prompt, model, tokenizer)
+        is_sufficient = "[ENOUGH]" in response or response.strip() == "ENOUGH"
         return response, is_sufficient
-    except Exception as e:
-        print(f"Model error: {e}")
-        return f"ERROR: {e}", False
+    except Exception as exc:
+        print(f"Model error: {exc}")
+        return f"ERROR: {exc}", False
 
 
-# =====================
-# Binary Search Prefix Finder
-# =====================
-def find_minimal_sufficient_prefix(question, sentences, sleep_sec=0.5):
+def find_minimal_sufficient_prefix(question, sentences, model, tokenizer, sleep_sec=0.5):
     """
-        sufficient_reasoning (str)
-        prefix_len (int)
-        is_sufficient (bool)
-        best_response (str)
+    Return the minimal sufficient reasoning prefix found by binary search.
     """
-
     total = len(sentences)
+    if total == 0:
+        return "", 0, False, ""
+
     left, right = 1, total
     best_idx = None
     best_response = ""
 
     print("\n" + "=" * 80)
-    print("【开始二分查找最短充分前缀】")
-    print(f"总句子数：{total}")
-    print(f"初始搜索区间：[{left}, {right}]")
+    print("Starting binary search for shortest sufficient prefix")
+    print(f"Total sentences: {total}")
+    print(f"Initial search interval: [{left}, {right}]")
     print("=" * 80)
 
     step = 1
@@ -131,55 +110,54 @@ def find_minimal_sufficient_prefix(question, sentences, sleep_sec=0.5):
         mid = (left + right) // 2
         prefix_text = " ".join(sentences[:mid])
 
-        print(f"\n【第 {step} 轮评估】")
-        print(f"当前搜索区间：left={left}, right={right}")
-        print(f"检查前缀句子数：{mid}/{total}")
+        print(f"\nRound {step}")
+        print(f"Current interval: left={left}, right={right}")
+        print(f"Checking prefix length: {mid}/{total}")
 
-        t0 = time.time()
+        started_at = time.time()
         response, is_sufficient = reasoning_sufficiency_check(
-            question, prefix_text
+            question,
+            prefix_text,
+            model,
+            tokenizer,
         )
-        dt = time.time() - t0
+        elapsed = time.time() - started_at
 
-        print(f"模型输出：{response}")
-        print(f"判定结果：{'ENOUGH' if is_sufficient else 'NOT_ENOUGH'}")
-        print(f"评估耗时：{dt:.2f} 秒")
+        print(f"Model output: {response}")
+        print(f"Decision: {'ENOUGH' if is_sufficient else 'NOT_ENOUGH'}")
+        print(f"Elapsed: {elapsed:.2f}s")
 
         if is_sufficient:
             best_idx = mid
             best_response = response
-            print("动作：当前前缀已足够 → 向左尝试更短前缀")
             right = mid - 1
         else:
-            print("动作：当前前缀不足 → 向右增加前缀长度")
             left = mid + 1
 
         step += 1
         time.sleep(sleep_sec)
 
-    print("\n" + "-" * 80)
-    print("【二分查找结束】")
-
     if best_idx is None:
-        print("⚠️ 未找到充分前缀，回退为完整推理")
+        print("No sufficient prefix found; falling back to full reasoning.")
         return " ".join(sentences), total, False, ""
-    else:
-        print(f"✅ 最短充分前缀长度：{best_idx}/{total}")
-        print(f"前缀比例：{best_idx / total:.4f}")
-        return " ".join(sentences[:best_idx]), best_idx, True, best_response
+
+    print(f"Shortest sufficient prefix length: {best_idx}/{total}")
+    print(f"Prefix ratio: {best_idx / total:.4f}")
+    return " ".join(sentences[:best_idx]), best_idx, True, best_response
 
 
-# =========================
-# 5. 主处理流程（JSONL）
-# =========================
+def process_jsonl(input_file, output_file, model, tokenizer, sleep_sec=0.5):
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
-def process_jsonl(input_file, output_file):
-    open(output_file, "w", encoding="utf-8").close()
+    with open(output_file, "w", encoding="utf-8"):
+        pass
 
-    with open(input_file, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with open(input_file, "r", encoding="utf-8") as handle:
+        lines = handle.readlines()
 
-    for idx, line in enumerate(tqdm(lines, desc="处理数据")):
+    for index, line in enumerate(tqdm(lines, desc="Processing records")):
         data = json.loads(line)
         question = data.get("question", "")
         full_reasoning = data.get("Long-CoT", "")
@@ -188,13 +166,19 @@ def process_jsonl(input_file, output_file):
             continue
 
         sentences = split_sentences(full_reasoning)
+        if not sentences:
+            continue
 
         prefix_text, prefix_len, ok, eval_resp = find_minimal_sufficient_prefix(
-            question, sentences
+            question,
+            sentences,
+            model,
+            tokenizer,
+            sleep_sec=sleep_sec,
         )
 
         result = {
-            "id": data.get("id", idx),
+            "id": data.get("id", index),
             "answer": data.get("answer", ""),
             "question": question,
             "sufficient_reasoning": prefix_text,
@@ -202,27 +186,28 @@ def process_jsonl(input_file, output_file):
             "total_sentences": len(sentences),
             "prefix_ratio": prefix_len / len(sentences),
             "is_sufficient": ok,
-            "evaluator_response": eval_resp
+            "evaluator_response": eval_resp,
         }
 
-        with open(output_file, "a", encoding="utf-8") as out:
-            out.write(json.dumps(result, ensure_ascii=False) + "\n")
-
-# =====================
-# Main JSONL Processing
-# =====================
+        with open(output_file, "a", encoding="utf-8") as output:
+            output.write(json.dumps(result, ensure_ascii=False) + "\n")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Find minimal sufficient prefixes with binary search.")
+    parser.add_argument("--model", required=True, help="Evaluator model path or name.")
+    parser.add_argument("--input", required=True, help="Input JSONL path with question and Long-CoT fields.")
+    parser.add_argument("--output", required=True, help="Output prefix-record JSONL path.")
+    parser.add_argument("--sleep_sec", type=float, default=0.5, help="Delay between model calls.")
+    return parser.parse_args()
 
-# =====================
-# Entry Point
-# =====================
+
+def main():
+    args = parse_args()
+    model, tokenizer = load_model(args.model)
+    process_jsonl(args.input, args.output, model, tokenizer, sleep_sec=args.sleep_sec)
+    print("All records processed.")
+
+
 if __name__ == "__main__":
-    input_file = "Path to your input jsonl file"
-    output_file = "Path to your output jsonl file"
-
-
-
-    process_jsonl(input_file, output_file)
-    print("\n✅ 全部数据处理完成")
-
+    main()

@@ -1,3 +1,16 @@
-export CUDA_VISIBLE_DEVICES= "your device GPU id."
+#!/bin/bash
+set -euo pipefail
 
-nohup python src/Prefix_alignment.py > output/log/prefix-alignment.log 2>&1 &
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+
+: "${MODEL_PATH:?Set MODEL_PATH to the student model path}"
+: "${INPUT_FILE:?Set INPUT_FILE to the prefix JSONL path}"
+: "${OUTPUT_FILE:?Set OUTPUT_FILE to the alignment JSONL output path}"
+
+mkdir -p output/log "$(dirname "$OUTPUT_FILE")"
+
+nohup python src/prefix-alignment.py \
+    --model "$MODEL_PATH" \
+    --input "$INPUT_FILE" \
+    --output "$OUTPUT_FILE" \
+    > output/log/prefix-alignment.log 2>&1 &
