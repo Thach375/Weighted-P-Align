@@ -55,17 +55,17 @@ Status: draft checklist. Do not begin product-code implementation until the spec
 
 ## Phase 3: Group Stats and Weighting
 
-- [ ] Implement group status and advantage computation.
+- [x] Implement group status and advantage computation.
   - Acceptance: mixed, all-correct, all-wrong, and singleton groups produce finite stats.
   - Verify: `python -m unittest discover tests`.
   - Files likely touched: `src/rw_palign/weighting.py`, `tests/test_weighting.py`.
 
-- [ ] Implement L1 SFT weighting.
+- [x] Implement L1 SFT weighting.
   - Acceptance: samples with `reward >= group_mean` are kept and normalized per group.
   - Verify: L1 fixture tests pass.
   - Files likely touched: `src/rw_palign/weighting.py`, `tests/test_weighting.py`.
 
-- [ ] Implement L2 clipped advantage weighting.
+- [x] Implement L2 clipped advantage weighting.
   - Acceptance: positive advantages are clipped, negative advantages become zero, and weights normalize per group.
   - Verify: L2 fixture tests pass.
   - Files likely touched: `src/rw_palign/weighting.py`, `tests/test_weighting.py`.

@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import math
+from typing import Iterable
+
+
+DEFAULT_EPSILON = 1e-6
+DEFAULT_CLIP = 3.0
+
+
+def compute_group_stats(rewards: list[float], epsilon: float = DEFAULT_EPSILON) -> dict[str, object]:
+    """Return mean, population std, pass rate, advantages, and group status."""
+    normalized_rewards = _normalize_rewards(rewards)
+    if not normalized_rewards:
+        raise ValueError("rewards must contain at least one value")
+    if epsilon <= 0 or not math.isfinite(epsilon):
+        raise ValueError("epsilon must be a positive finite value")
+
+    count = len(normalized_rewards)
+    reward_mean = sum(normalized_rewards) / count
+    reward_std = math.sqrt(sum((reward - reward_mean) ** 2 for reward in normalized_rewards) / count)
+    advantages = _compute_advantages(normalized_rewards, reward_mean, reward_std, epsilon)
+    positive_count = sum(1 for reward in normalized_rewards if reward > 0)
+
+    return {
+        "k": count,
+        "pass_rate": positive_count / count,
+        "reward_mean": reward_mean,
+        "reward_std": reward_std,
+        "advantages": advantages,
+        "status": _classify_status(count, positive_count),
+    }
+
+
+def compute_sft_weights(
+    rewards: list[float],
+    advantages: list[float],
+    mode: str,
+    clip: float = DEFAULT_CLIP,
+) -> list[float]:
+    """Return normalized per-group SFT weights for L1 filtering or L2 weighting."""
+    normalized_rewards = _normalize_rewards(rewards)
+    normalized_advantages = _normalize_rewards(advantages)
+    if len(normalized_rewards) != len(normalized_advantages):
+        raise ValueError("rewards and advantages must have the same length")
+    if not normalized_rewards:
+        raise ValueError("rewards must contain at least one value")
+    if clip <= 0 or not math.isfinite(clip):
+        raise ValueError("clip must be a positive finite value")
+
+    normalized_mode = mode.upper()
+    if normalized_mode not in {"L1", "L2"}:
+        raise ValueError(f"unsupported weighting mode: {mode}")
+
+    selected_count = sum(1 for reward in normalized_rewards if reward > 0)
+    if selected_count == 0:
+        return [0.0] * len(normalized_rewards)
+    if len(normalized_rewards) == 1:
+        return [1.0]
+
+    if normalized_mode == "L1":
+        reward_mean = sum(normalized_rewards) / len(normalized_rewards)
+        raw_weights = [1.0 if reward >= reward_mean and reward > 0 else 0.0 for reward in normalized_rewards]
+    else:
+        raw_weights = [min(max(advantage, 0.0), clip) if reward > 0 else 0.0 for reward, advantage in zip(normalized_rewards, normalized_advantages)]
+        if sum(raw_weights) == 0.0 and selected_count == len(normalized_rewards):
+            raw_weights = [1.0] * len(normalized_rewards)
+
+    return _normalize_weights(raw_weights)
+
+
+def _compute_advantages(
+    rewards: list[float],
+    reward_mean: float,
+    reward_std: float,
+    epsilon: float,
+) -> list[float]:
+    if reward_std == 0.0:
+        return [0.0] * len(rewards)
+    return [(reward - reward_mean) / (reward_std + epsilon) for reward in rewards]
+
+
+def _classify_status(count: int, positive_count: int) -> str:
+    if count == 1:
+        return "singleton"
+    if positive_count == 0:
+        return "all_wrong"
+    if positive_count == count:
+        return "all_correct"
+    return "mixed"
+
+
+def _normalize_weights(weights: list[float]) -> list[float]:
+    total = sum(weights)
+    if total == 0.0:
+        return [0.0] * len(weights)
+    return [weight / total for weight in weights]
+
+
+def _normalize_rewards(values: Iterable[float]) -> list[float]:
+    normalized = [float(value) for value in values]
+    if any(not math.isfinite(value) for value in normalized):
+        raise ValueError("values must be finite")
+    return normalized
